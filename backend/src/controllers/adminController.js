@@ -24,7 +24,10 @@ export async function getStats(_req, res) {
       LEFT JOIN orders o       ON o.id = oi.order_id
       GROUP BY c.name
       ORDER BY revenue DESC`),
-    pool.query(`SELECT id, name, stock FROM products WHERE stock <= 5 ORDER BY stock, name LIMIT 10`),
+    pool.query(`
+      SELECT p.id, p.name, concat_ws(', ', v.color_name, v.size_label) AS variant, v.stock
+      FROM product_variants v JOIN products p ON p.id = v.product_id
+      WHERE v.stock <= 5 ORDER BY v.stock, p.name LIMIT 10`),
     pool.query(`
       SELECT o.id, o.total, o.status, o.created_at AS "createdAt", m.name AS "customerName"
       FROM orders o JOIN members m ON m.id = o.member_id
@@ -75,8 +78,8 @@ export async function updateOrderStatus(req, res) {
     // Cancelling puts the items back in stock
     if (status === "cancelled" && oldStatus !== "cancelled") {
       await client.query(
-        `UPDATE products p SET stock = p.stock + oi.quantity
-         FROM order_items oi WHERE oi.order_id = $1 AND oi.product_id = p.id`,
+        `UPDATE product_variants v SET stock = v.stock + oi.quantity
+         FROM order_items oi WHERE oi.order_id = $1 AND oi.variant_id = v.id`,
         [id]
       )
     }

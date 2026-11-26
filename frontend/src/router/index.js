@@ -7,6 +7,7 @@ const routes = [
   { path: "/", name: "home", component: HomeView },
   { path: "/products", name: "products", component: () => import("@/views/ProductsView.vue") },
   { path: "/products/:id", name: "product", component: () => import("@/views/ProductDetailView.vue") },
+  { path: "/compare", name: "compare", component: () => import("@/views/CompareView.vue") },
   { path: "/cart", name: "cart", component: () => import("@/views/CartView.vue") },
   { path: "/login", name: "login", component: () => import("@/views/LoginView.vue"), meta: { guestOnly: true } },
   { path: "/register", name: "register", component: () => import("@/views/RegisterView.vue"), meta: { guestOnly: true } },

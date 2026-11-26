@@ -47,6 +47,15 @@ test("lists products with pagination", async () => {
   assert.equal(res.body.data.length, 5)
   assert.ok(res.body.pagination.total >= 5)
   assert.ok(res.body.data[0].brand.name)
+  assert.ok(res.body.data[0].colors.length >= 1)
+})
+
+test("product detail includes variants and ordered specs", async () => {
+  const res = await api("/products/1")
+  assert.equal(res.status, 200)
+  assert.equal(res.body.variants.length, 9) // 3 colors x 3 storage sizes
+  assert.equal(res.body.price, Math.min(...res.body.variants.map((v) => v.price)))
+  assert.equal(Object.keys(res.body.specs)[0], "Display")
 })
 
 test("filters by category and sorts by price", async () => {
@@ -84,39 +93,65 @@ test("customers cannot use admin endpoints", async () => {
   assert.equal(res.status, 403)
 })
 
+async function variantOf(productId, pick = (v) => v.stock > 2) {
+  const product = (await api(`/products/${productId}`)).body
+  return product.variants.find(pick)
+}
+
+const shipping = { shippingName: "Tester", shippingPhone: "0800000000", shippingAddress: "1 Test Road" }
+
 test("placing an order reduces stock, cancelling restores it", async () => {
-  const before = (await api("/products/4")).body.stock
+  const variant = await variantOf(4)
 
   const order = await api("/orders", {
     method: "POST",
     token,
-    body: {
-      items: [{ productId: 4, quantity: 2 }],
-      shippingName: "Tester",
-      shippingPhone: "0800000000",
-      shippingAddress: "1 Test Road",
-    },
+    body: { items: [{ variantId: variant.id, quantity: 2 }], ...shipping },
   })
   assert.equal(order.status, 201)
   assert.equal(order.body.items.length, 1)
-  assert.equal(order.body.total, order.body.items[0].unitPrice * 2)
-  assert.equal((await api("/products/4")).body.stock, before - 2)
+  assert.equal(order.body.items[0].variantLabel, variant.colorName)
+  assert.equal(order.body.total, variant.price * 2)
+  assert.equal((await variantOf(4, (v) => v.id === variant.id)).stock, variant.stock - 2)
 
   const cancel = await api(`/orders/${order.body.id}/cancel`, { method: "POST", token })
   assert.equal(cancel.body.status, "cancelled")
-  assert.equal((await api("/products/4")).body.stock, before)
+  assert.equal((await variantOf(4, (v) => v.id === variant.id)).stock, variant.stock)
 })
 
-test("cannot order more than is in stock", async () => {
+test("cannot order a sold-out variant", async () => {
+  const soldOut = await variantOf(14, (v) => v.stock === 0) // Northwind Ring in Gold is seeded sold out
   const res = await api("/orders", {
     method: "POST",
     token,
-    body: {
-      items: [{ productId: 14, quantity: 1 }], // seeded with 0 stock
-      shippingName: "Tester",
-      shippingPhone: "0800000000",
-      shippingAddress: "1 Test Road",
-    },
+    body: { items: [{ variantId: soldOut.id, quantity: 1 }], ...shipping },
   })
   assert.equal(res.status, 409)
+})
+
+test("admin can create a product with variants", async () => {
+  const login = await api("/auth/login", {
+    method: "POST",
+    body: { email: process.env.ADMIN_EMAIL || "admin@novashop.test", password: process.env.ADMIN_PASSWORD },
+  })
+  assert.equal(login.status, 200)
+  const res = await api("/products", {
+    method: "POST",
+    token: login.body.token,
+    body: {
+      sku: `TST-${Date.now()}`,
+      name: "Test Lamp",
+      specs: { Power: "8 W" },
+      sizeOptionName: "Size",
+      variants: [
+        { colorName: "White", colorHex: "#ffffff", sizeLabel: "S", price: 990, stock: 5 },
+        { colorName: "White", colorHex: "#ffffff", sizeLabel: "L", price: 1290, stock: 0 },
+      ],
+    },
+  })
+  assert.equal(res.status, 201)
+  assert.equal(res.body.price, 990)
+  assert.equal(res.body.stock, 5)
+  assert.equal(res.body.variants.length, 2)
+  await api(`/products/${res.body.id}`, { method: "DELETE", token: login.body.token })
 })

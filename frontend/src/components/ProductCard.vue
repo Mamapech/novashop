@@ -1,39 +1,52 @@
 <script setup>
+import { ref, computed } from "vue"
 import ProductImage from "./ProductImage.vue"
-import { useCartStore } from "@/stores/cart"
+import { useCompareStore, MAX_COMPARE } from "@/stores/compare"
 import { useToastStore } from "@/stores/toast"
 import { money } from "@/utils/format"
 
 const props = defineProps({ product: { type: Object, required: true } })
-const cart = useCartStore()
+const compare = useCompareStore()
 const toast = useToastStore()
 
-function addToCart() {
-  cart.add(props.product)
-  toast.success(`Added ${props.product.name} to cart`)
+// Hovering a color dot previews that color's picture
+const previewColor = ref(null)
+const image = computed(() => previewColor.value?.imageUrl || props.product.imageUrl)
+const hasOptions = computed(() => props.product.colors.length > 1 || props.product.sizeOptionName)
+
+function toggleCompare() {
+  if (!compare.toggle(props.product.id)) toast.error(`You can compare up to ${MAX_COMPARE} products`)
 }
 </script>
 
 <template>
   <article class="product card">
-    <RouterLink :to="`/products/${product.id}`" class="image-link">
-      <ProductImage :product="product" />
-      <span v-if="product.stock === 0" class="badge badge-muted tag">Sold out</span>
-      <span v-else-if="product.isFeatured" class="badge tag">Featured</span>
+    <RouterLink :to="`/products/${product.id}`" class="image-link" :aria-label="product.name">
+      <ProductImage :src="image" :alt="product.name" />
     </RouterLink>
     <div class="body">
-      <span class="brand">{{ product.brand?.name }}</span>
-      <RouterLink :to="`/products/${product.id}`" class="name">{{ product.name }}</RouterLink>
-      <div class="bottom">
-        <span class="price">{{ money(product.price) }}</span>
+      <div class="colors" @mouseleave="previewColor = null">
         <button
-          class="btn btn-outline btn-sm"
-          :disabled="product.stock === 0"
-          @click="addToCart"
-          :aria-label="`Add ${product.name} to cart`"
-        >
-          Add
-        </button>
+          v-for="c in product.colors"
+          :key="c.name"
+          class="swatch"
+          :style="{ background: c.hex }"
+          :title="c.name"
+          :aria-label="c.name"
+          @mouseenter="previewColor = c"
+          @focus="previewColor = c"
+        ></button>
+      </div>
+      <span v-if="product.stock === 0" class="eyebrow muted">Sold out</span>
+      <span v-else-if="product.isFeatured" class="eyebrow">New</span>
+      <RouterLink :to="`/products/${product.id}`" class="name">{{ product.name }}</RouterLink>
+      <p class="tagline">{{ product.tagline }}</p>
+      <div class="bottom">
+        <span class="price">{{ hasOptions ? "From " : "" }}{{ money(product.price) }}</span>
+        <label class="compare small">
+          <input type="checkbox" :checked="compare.has(product.id)" @change="toggleCompare" />
+          Compare
+        </label>
       </div>
     </div>
   </article>
@@ -44,49 +57,63 @@ function addToCart() {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  transition: box-shadow 0.2s, transform 0.2s;
+  transition: box-shadow 0.3s, transform 0.3s;
 }
 .product:hover {
-  box-shadow: var(--shadow);
-  transform: translateY(-2px);
+  box-shadow: 2px 8px 24px rgb(0 0 0 / 0.12);
+  transform: scale(1.01);
 }
 .image-link {
-  position: relative;
   display: block;
 }
-.tag {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  background: #fff;
-}
 .body {
-  padding: 16px;
+  padding: 18px 22px 22px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   flex: 1;
 }
-.brand {
-  font-size: 0.8rem;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+.colors {
+  display: flex;
+  gap: 7px;
+  margin-bottom: 10px;
+  min-height: 12px;
+}
+.colors .swatch {
+  border: 0;
+  padding: 0;
+  cursor: pointer;
 }
 .name {
   color: var(--ink);
   font-weight: 600;
-  line-height: 1.35;
+  font-size: 19px;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+.tagline {
+  color: var(--muted);
+  font-size: 14px;
+  margin: 4px 0 0;
 }
 .bottom {
   margin-top: auto;
-  padding-top: 12px;
+  padding-top: 16px;
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 .price {
-  font-weight: 700;
-  font-size: 1.1rem;
+  font-size: 15px;
+}
+.compare {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.compare input {
+  accent-color: var(--brand);
 }
 </style>

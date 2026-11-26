@@ -82,10 +82,11 @@ async function cancel() {
 
       <div class="layout">
         <div class="card">
-          <div v-for="item in order.items" :key="item.productId + item.name" class="line">
-            <div class="thumb"><ProductImage :product="{ id: item.productId || 0, name: item.name, imageUrl: item.imageUrl }" /></div>
+          <div v-for="(item, i) in order.items" :key="i" class="line">
+            <div class="thumb"><ProductImage :src="item.imageUrl" :alt="item.name" ratio="1 / 1" /></div>
             <div>
               <strong>{{ item.name }}</strong>
+              <div v-if="item.variantLabel" class="muted small">{{ item.variantLabel }}</div>
               <div class="muted small">{{ item.quantity }} × {{ money(item.unitPrice) }}</div>
             </div>
             <strong>{{ money(item.unitPrice * item.quantity) }}</strong>

@@ -9,11 +9,10 @@ const ORDER_SELECT = `
          json_build_object('id', m.id, 'name', m.name, 'email', m.email) AS customer,
          COALESCE((
            SELECT json_agg(json_build_object(
-                    'productId', oi.product_id, 'name', oi.name,
-                    'unitPrice', oi.unit_price, 'quantity', oi.quantity,
-                    'imageUrl', p.image_url) ORDER BY oi.id)
+                    'productId', oi.product_id, 'variantId', oi.variant_id, 'name', oi.name,
+                    'variantLabel', oi.variant_label, 'unitPrice', oi.unit_price,
+                    'quantity', oi.quantity, 'imageUrl', oi.image_url) ORDER BY oi.id)
            FROM order_items oi
-           LEFT JOIN products p ON p.id = oi.product_id
            WHERE oi.order_id = o.id
          ), '[]') AS items
   FROM orders o
@@ -27,19 +26,21 @@ export async function findOrder(id) {
 }
 
 // POST /api/orders
-// Body: { items: [{ productId, quantity }], shippingName, shippingPhone, shippingAddress }
+// Body: { items: [{ variantId, quantity }], shippingName, shippingPhone, shippingAddress }
 // Runs inside a transaction: either the whole order is saved and stock is reduced, or nothing changes.
 export async function createOrder(req, res) {
   requireFields(req.body, ["shippingName", "shippingPhone", "shippingAddress"])
   const { items } = req.body
   if (!Array.isArray(items) || items.length === 0) throw badRequest("Your cart is empty")
+  if (items.length > 50) throw badRequest("Too many different items in one order")
 
-  // Merge duplicate lines (same product twice) into one
+  // Merge duplicate lines (same variant twice) into one
   const wanted = new Map()
   for (const item of items) {
-    const productId = toPositiveInt(item.productId, "productId")
+    const variantId = toPositiveInt(item.variantId, "variantId")
     const quantity = toPositiveInt(item.quantity, "quantity")
-    wanted.set(productId, (wanted.get(productId) || 0) + quantity)
+    if (quantity > 20) throw badRequest("You can buy at most 20 of each item")
+    wanted.set(variantId, (wanted.get(variantId) || 0) + quantity)
   }
 
   const client = await pool.connect()
@@ -47,18 +48,25 @@ export async function createOrder(req, res) {
     await client.query("BEGIN")
 
     // FOR UPDATE locks these rows, so two customers can't buy the last item at the same time
-    const { rows: products } = await client.query(
-      "SELECT id, name, price, stock FROM products WHERE id = ANY($1::int[]) FOR UPDATE",
+    const { rows: variants } = await client.query(
+      `SELECT v.id, v.product_id, v.price, v.stock, v.color_name, v.size_label,
+              COALESCE(v.image_url, p.image_url) AS image_url, p.name
+       FROM product_variants v JOIN products p ON p.id = v.product_id
+       WHERE v.id = ANY($1::int[])
+       FOR UPDATE OF v`,
       [[...wanted.keys()]]
     )
-
-    if (products.length !== wanted.size) throw badRequest("Some products in your cart no longer exist")
+    if (variants.length !== wanted.size) throw badRequest("Some items in your cart are no longer available")
 
     let total = 0
-    for (const p of products) {
-      const qty = wanted.get(p.id)
-      if (p.stock < qty) throw conflict(`Only ${p.stock} left of "${p.name}"`)
-      total += p.price * qty
+    for (const v of variants) {
+      const qty = wanted.get(v.id)
+      const label = [v.color_name, v.size_label].filter(Boolean).join(", ")
+      if (v.stock < qty) {
+        throw conflict(v.stock === 0 ? `"${v.name}" (${label}) is sold out` : `Only ${v.stock} left of "${v.name}" (${label})`)
+      }
+      v.label = label
+      total += v.price * qty
     }
 
     const { rows } = await client.query(
@@ -68,13 +76,14 @@ export async function createOrder(req, res) {
     )
     const orderId = rows[0].id
 
-    for (const p of products) {
-      const qty = wanted.get(p.id)
+    for (const v of variants) {
+      const qty = wanted.get(v.id)
       await client.query(
-        "INSERT INTO order_items (order_id, product_id, name, unit_price, quantity) VALUES ($1, $2, $3, $4, $5)",
-        [orderId, p.id, p.name, p.price, qty]
+        `INSERT INTO order_items (order_id, product_id, variant_id, name, variant_label, image_url, unit_price, quantity)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [orderId, v.product_id, v.id, v.name, v.label, v.image_url, v.price, qty]
       )
-      await client.query("UPDATE products SET stock = stock - $1 WHERE id = $2", [qty, p.id])
+      await client.query("UPDATE product_variants SET stock = stock - $1 WHERE id = $2", [qty, v.id])
     }
 
     await client.query("COMMIT")
@@ -115,8 +124,8 @@ export async function cancelOrder(req, res) {
     await client.query("UPDATE orders SET status = 'cancelled' WHERE id = $1", [id])
     // Put the items back in stock
     await client.query(
-      `UPDATE products p SET stock = p.stock + oi.quantity
-       FROM order_items oi WHERE oi.order_id = $1 AND oi.product_id = p.id`,
+      `UPDATE product_variants v SET stock = v.stock + oi.quantity
+       FROM order_items oi WHERE oi.order_id = $1 AND oi.variant_id = v.id`,
       [id]
     )
     await client.query("COMMIT")

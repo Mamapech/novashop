@@ -1,101 +1,123 @@
 <script setup>
 import { useCartStore } from "@/stores/cart"
+import { useAuthStore } from "@/stores/auth"
 import { money } from "@/utils/format"
 import ProductImage from "@/components/ProductImage.vue"
 import EmptyState from "@/components/EmptyState.vue"
 
 const cart = useCartStore()
+const auth = useAuthStore()
 </script>
 
 <template>
   <div class="container">
-    <div class="page-header">
-      <h1>Your cart</h1>
-      <p>{{ cart.count }} item{{ cart.count === 1 ? "" : "s" }}</p>
+    <div class="page-header center">
+      <h1 v-if="cart.items.length">Review your cart. <span class="muted">{{ money(cart.total) }}</span></h1>
+      <h1 v-else>Your cart is empty.</h1>
+      <p v-if="cart.items.length">Free delivery and free cancellation before shipping.</p>
     </div>
 
-    <EmptyState v-if="!cart.items.length" title="Your cart is empty" text="Find something you like in the shop.">
-      <RouterLink to="/products" class="btn btn-primary">Start shopping</RouterLink>
+    <EmptyState v-if="!cart.items.length" title="Nothing here yet" text="Find something you love in the store.">
+      <RouterLink to="/products" class="btn btn-primary">Continue shopping</RouterLink>
     </EmptyState>
 
-    <div v-else class="layout">
-      <div class="card">
-        <div v-for="item in cart.items" :key="item.productId" class="line">
+    <template v-else>
+      <div class="checkout-top">
+        <RouterLink to="/checkout" class="btn btn-primary btn-lg">Check Out</RouterLink>
+      </div>
+
+      <div class="lines">
+        <div v-for="item in cart.items" :key="item.variantId" class="line">
           <RouterLink :to="`/products/${item.productId}`" class="thumb">
-            <ProductImage :product="{ id: item.productId, name: item.name, imageUrl: item.imageUrl }" />
+            <ProductImage :src="item.imageUrl" :alt="item.name" ratio="1 / 1" />
           </RouterLink>
-          <div class="line-info">
-            <RouterLink :to="`/products/${item.productId}`" class="name">{{ item.name }}</RouterLink>
-            <span class="muted small">{{ money(item.price) }} each</span>
-            <button class="link-btn small" @click="cart.remove(item.productId)">Remove</button>
+          <div class="line-main">
+            <div class="line-top">
+              <div>
+                <RouterLink :to="`/products/${item.productId}`" class="name">{{ item.name }}</RouterLink>
+                <div class="muted small">{{ item.variantLabel }}</div>
+              </div>
+              <div class="qty">
+                <button aria-label="Less" :disabled="item.quantity <= 1" @click="cart.setQuantity(item.variantId, item.quantity - 1)">−</button>
+                <span>{{ item.quantity }}</span>
+                <button aria-label="More" :disabled="item.quantity >= Math.min(item.stock, 20)" @click="cart.setQuantity(item.variantId, item.quantity + 1)">+</button>
+              </div>
+              <div class="line-price">
+                <strong>{{ money(item.price * item.quantity) }}</strong>
+                <button class="link-btn" @click="cart.remove(item.variantId)">Remove</button>
+              </div>
+            </div>
+            <p class="small muted delivery">Delivers in 2–3 business days · Free</p>
           </div>
-          <div class="qty">
-            <button aria-label="Less" @click="cart.setQuantity(item.productId, item.quantity - 1)">−</button>
-            <span>{{ item.quantity }}</span>
-            <button aria-label="More" @click="cart.setQuantity(item.productId, item.quantity + 1)">+</button>
-          </div>
-          <strong class="line-total">{{ money(item.price * item.quantity) }}</strong>
         </div>
       </div>
 
-      <aside class="card summary">
-        <div class="card-body stack">
-          <h3>Order summary</h3>
-          <div class="row-between"><span class="muted">Subtotal</span><span>{{ money(cart.total) }}</span></div>
-          <div class="row-between"><span class="muted">Delivery</span><span class="free">Free</span></div>
-          <div class="row-between total"><span>Total</span><span>{{ money(cart.total) }}</span></div>
-          <RouterLink to="/checkout" class="btn btn-primary btn-lg btn-block">Checkout</RouterLink>
-          <RouterLink to="/products" class="btn btn-ghost btn-block">Continue shopping</RouterLink>
-        </div>
-      </aside>
-    </div>
+      <div class="totals">
+        <div class="row-between"><span>Subtotal</span><span>{{ money(cart.total) }}</span></div>
+        <div class="row-between"><span>Shipping</span><span>FREE</span></div>
+        <div class="row-between total"><span>Total</span><span>{{ money(cart.total) }}</span></div>
+        <p class="small muted vat">Includes VAT of {{ money(cart.total * 7 / 107) }}</p>
+        <RouterLink to="/checkout" class="btn btn-primary btn-lg btn-block">Check Out</RouterLink>
+        <p v-if="!auth.isLoggedIn" class="small muted center">You'll be asked to sign in or create an account.</p>
+      </div>
+    </template>
   </div>
 </template>
 
 <style scoped>
-.layout {
-  display: grid;
-  grid-template-columns: 1fr 340px;
-  gap: 28px;
-  align-items: start;
+.center {
+  text-align: center;
+}
+.checkout-top {
+  text-align: center;
+  padding-bottom: 32px;
+  border-bottom: 1px solid var(--line-soft);
 }
 .line {
   display: grid;
-  grid-template-columns: 88px 1fr auto 110px;
-  gap: 16px;
-  align-items: center;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--line);
-}
-.line:last-child {
-  border-bottom: 0;
+  grid-template-columns: 160px 1fr;
+  gap: 32px;
+  padding: 36px 0;
+  border-bottom: 1px solid var(--line-soft);
 }
 .thumb {
-  border-radius: var(--radius-sm);
+  border-radius: 14px;
   overflow: hidden;
 }
-.line-info {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+.line-top {
+  display: grid;
+  grid-template-columns: 1fr auto 140px;
+  gap: 24px;
+  align-items: start;
 }
 .name {
   color: var(--ink);
+  font-size: 24px;
   font-weight: 600;
+  line-height: 1.2;
+}
+.line-price {
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  font-size: 21px;
 }
 .link-btn {
   border: 0;
   background: none;
-  color: var(--danger);
-  padding: 4px 0 0;
+  color: var(--link);
+  padding: 0;
   cursor: pointer;
   font: inherit;
+  font-size: 15px;
 }
 .qty {
   display: flex;
   align-items: center;
   border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  border-radius: 980px;
 }
 .qty button {
   width: 34px;
@@ -103,35 +125,42 @@ const cart = useCartStore()
   border: 0;
   background: none;
   cursor: pointer;
-  font-size: 1.1rem;
+  font-size: 18px;
+  color: var(--ink);
+}
+.qty button:disabled {
+  color: var(--line);
+  cursor: default;
 }
 .qty span {
-  min-width: 24px;
+  min-width: 20px;
   text-align: center;
 }
-.line-total {
-  text-align: right;
+.delivery {
+  margin-top: 20px;
 }
-.summary {
-  position: sticky;
-  top: 88px;
-}
-.free {
-  color: var(--success);
-  font-weight: 600;
+.totals {
+  max-width: 420px;
+  margin: 32px 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 .total {
-  font-weight: 700;
-  font-size: 1.15rem;
+  font-size: 24px;
+  font-weight: 600;
   padding-top: 16px;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--line-soft);
 }
-@media (max-width: 860px) {
-  .layout { grid-template-columns: 1fr; }
-  .summary { position: static; }
+.vat {
+  text-align: right;
+  margin: -6px 0 8px;
 }
-@media (max-width: 560px) {
-  .line { grid-template-columns: 64px 1fr; }
-  .qty, .line-total { grid-column: 2; justify-self: start; }
+@media (max-width: 734px) {
+  .line { grid-template-columns: 90px 1fr; gap: 16px; }
+  .line-top { grid-template-columns: 1fr; gap: 12px; }
+  .line-price { align-items: flex-start; text-align: left; }
+  .name { font-size: 19px; }
+  .totals { max-width: none; }
 }
 </style>

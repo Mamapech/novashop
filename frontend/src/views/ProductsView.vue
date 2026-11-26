@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, watch, onMounted } from "vue"
+import { ref, reactive, computed, watch, onMounted } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import api, { errorMessage } from "@/api/client"
 import ProductCard from "@/components/ProductCard.vue"
@@ -7,6 +7,7 @@ import PaginationBar from "@/components/PaginationBar.vue"
 import EmptyState from "@/components/EmptyState.vue"
 
 const route = useRoute()
+const categoryName = computed(() => categories.value.find((c) => c.slug === filters.category)?.name)
 const router = useRouter()
 
 const products = ref([])
@@ -28,7 +29,7 @@ function readFiltersFromUrl() {
     maxPrice: q.maxPrice || "",
     inStock: q.inStock === "true",
     featured: q.featured === "true",
-    sort: q.sort || "newest",
+    sort: q.sort || "featured",
     page: Number(q.page) || 1,
   })
 }
@@ -37,7 +38,7 @@ function applyFilters(changes = {}) {
   const next = { ...filters, page: 1, ...changes }
   // Remove empty values so the URL stays clean
   const query = Object.fromEntries(
-    Object.entries(next).filter(([k, v]) => v !== "" && v !== false && !(k === "sort" && v === "newest") && !(k === "page" && v === 1))
+    Object.entries(next).filter(([k, v]) => v !== "" && v !== false && !(k === "sort" && v === "featured") && !(k === "page" && v === 1))
   )
   router.push({ query })
 }
@@ -79,15 +80,16 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="container">
+  <div class="container container-wide">
     <div class="page-header row-between">
       <div>
-        <h1>{{ filters.q ? `Results for "${filters.q}"` : "All products" }}</h1>
+        <h1>{{ filters.q ? `Results for “${filters.q}”` : categoryName || "All products" }}</h1>
         <p>{{ pagination.total }} products</p>
       </div>
       <div class="row">
         <label for="sort" class="muted small">Sort by</label>
         <select id="sort" class="select sort" :value="filters.sort" @change="applyFilters({ sort: $event.target.value })">
+          <option value="featured">Featured</option>
           <option value="newest">Newest</option>
           <option value="price_asc">Price: low to high</option>
           <option value="price_desc">Price: high to low</option>

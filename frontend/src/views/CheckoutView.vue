@@ -37,7 +37,7 @@ async function placeOrder() {
   try {
     const { data } = await api.post("/orders", {
       ...form,
-      items: cart.items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+      items: cart.items.map((i) => ({ variantId: i.variantId, quantity: i.quantity })),
     })
     // Go to the order page first, then empty the cart (so this page never flashes "empty")
     await router.push({ name: "order", params: { id: data.id }, query: { new: "1" } })
@@ -98,8 +98,8 @@ async function placeOrder() {
       <aside class="card">
         <div class="card-body stack">
           <h3>Your order</h3>
-          <div v-for="item in cart.items" :key="item.productId" class="row-between small">
-            <span>{{ item.quantity }} × {{ item.name }}</span>
+          <div v-for="item in cart.items" :key="item.variantId" class="row-between small">
+            <span>{{ item.quantity }} × {{ item.name }}<br /><span class="muted">{{ item.variantLabel }}</span></span>
             <span>{{ money(item.price * item.quantity) }}</span>
           </div>
           <div class="row-between small"><span class="muted">Delivery</span><span>Free</span></div>

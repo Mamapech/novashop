@@ -50,7 +50,7 @@ const maxCategory = computed(() => Math.max(1, ...(stats.value?.salesByCategory.
             <h3>Low stock</h3>
             <p v-if="!stats.lowStock.length" class="muted small">Everything is well stocked.</p>
             <div v-for="p in stats.lowStock" :key="p.id" class="row-between low">
-              <span class="small">{{ p.name }}</span>
+              <span class="small">{{ p.name }}<br /><span class="muted">{{ p.variant }}</span></span>
               <span class="badge" :class="p.stock === 0 ? 'badge-danger' : 'badge-warn'">{{ p.stock }} left</span>
             </div>
           </div>

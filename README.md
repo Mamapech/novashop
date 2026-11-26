@@ -9,20 +9,22 @@ A full stack e-commerce web app for gadgets and electronics. Customers can brows
 ## Features
 
 **Customers**
+- Clean, product-first design with a store home page, category navigation and full-screen product banners
 - Browse products by category, brand and price, with search, sorting and pagination (filters are kept in the URL so links can be shared)
-- Product pages with stock status and related products
-- Cart saved in the browser, checkout with delivery details
+- **Product options:** pick a color and a second option (storage, case size, ring size). Price, picture and stock update for the exact combination, and sold-out options are disabled
+- **Compare** up to 3 products side by side, with "show only differences"
+- Cart saved in the browser, checkout with a **map and GPS button that fills in the delivery address**
 - Order history, order tracking (pending → paid → shipped → delivered) and cancellation
 - Register, log in (JWT), edit name and upload a profile picture
 
 **Admins**
 - Dashboard: revenue, order count, customers, sales by category, low-stock alerts
-- Create, edit and delete products, upload product images
+- Create, edit and delete products with their colors, options, prices, stock, tech specs and a picture per color
 - View all orders, filter by status and update status
 
 **Engineering**
 - REST API with 20 endpoints, documented with Swagger UI at `/api-docs`
-- Normalized PostgreSQL schema (6 tables, foreign keys, check constraints, indexes)
+- Normalized PostgreSQL schema (7 tables, foreign keys, check constraints, indexes), with a product / variant model like real stores use
 - Orders run in a **database transaction** with `SELECT ... FOR UPDATE` row locks, so stock can never go below zero, even if two people buy the last item at once
 - All SQL uses parameterized queries (protects against SQL injection)
 - Passwords hashed with bcrypt; role-based access (customer / admin)
@@ -32,8 +34,10 @@ A full stack e-commerce web app for gadgets and electronics. Customers can brows
 | Products | Product detail |
 | --- | --- |
 | ![Products](docs/screenshots/products.png) | ![Product detail](docs/screenshots/product-detail.png) |
-| **Cart** | **Admin dashboard** |
-| ![Cart](docs/screenshots/cart.png) | ![Admin](docs/screenshots/admin-dashboard.png) |
+| **Compare** | **Cart** |
+| ![Compare](docs/screenshots/compare.png) | ![Cart](docs/screenshots/cart.png) |
+| **Admin dashboard** | **Admin product editor** |
+| ![Admin](docs/screenshots/admin-dashboard.png) | ![Admin products](docs/screenshots/admin-products.png) |
 
 ---
 
@@ -135,7 +139,7 @@ With the database set up (Step 2), in the `backend` folder:
 npm test
 ```
 
-Expected result: `# pass 8` and `# fail 0`.
+Expected result: `# pass 10` and `# fail 0`.
 
 ### Troubleshooting
 
@@ -157,7 +161,7 @@ novashop/
 ├── backend/
 │   ├── db/
 │   │   ├── schema.sql          # tables, constraints, indexes
-│   │   └── seed.sql            # sample brands, categories, products
+│   │   └── seed-data.js        # sample catalog: 14 products, 60 variants
 │   ├── public/images/products/ # pictures for the sample products
 │   ├── scripts/setup-db.js     # npm run db:setup
 │   ├── src/
@@ -178,6 +182,7 @@ novashop/
 │       ├── router/index.js     # pages and route guards
 │       ├── components/         # header, product card, pagination, ...
 │       ├── views/              # pages (shop, cart, checkout, orders, account)
+│       │   ├── CompareView.vue # side-by-side comparison
 │       │   └── admin/          # admin dashboard, products, orders
 │       └── assets/main.css     # design system (colors, buttons, forms)
 ├── docs/screenshots/
@@ -187,12 +192,15 @@ novashop/
 ## Database design
 
 ```
-members ──< orders ──< order_items >── products >── brands
-                                         │
-                                         └──────── categories
+members ──< orders ──< order_items >── product_variants >── products >── brands
+                                                                  │
+                                                                  └──────── categories
 ```
 
-- `order_items` stores the product **name and price at the time of purchase**, so old orders stay correct even if a product's price changes or it is deleted.
+- A **product** is the model (Aurora Book 14). A **variant** is what you actually buy (Midnight, 512GB), with its own SKU, price, stock and picture. `products.price` stores the lowest variant price for fast "From ฿…" sorting and filtering.
+- `products.specs` is a `JSON` column (not `JSONB`) so the tech specs keep the order they were written in.
+
+- `order_items` stores the product **name, option, picture and price at the time of purchase**, so old orders stay correct even if a product's price changes or it is deleted.
 - `price` and `total` use `NUMERIC` (exact decimals) instead of floating point.
 - Enums (`member_role`, `order_status`) keep invalid values out of the database.
 
@@ -205,7 +213,7 @@ Full interactive docs at http://localhost:3000/api-docs.
 | POST | `/api/auth/register`, `/api/auth/login` | Public |
 | GET / PATCH | `/api/auth/me` | Logged in |
 | POST | `/api/auth/me/avatar` | Logged in |
-| GET | `/api/products` (search, filter, sort, paginate) | Public |
+| GET | `/api/products` (search, filter, sort, paginate, `ids` for compare) | Public |
 | GET | `/api/products/:id`, `/api/brands`, `/api/categories` | Public |
 | POST / PUT / DELETE | `/api/products`, `/api/products/:id` | Admin |
 | POST | `/api/products/:id/image` | Admin |
@@ -238,5 +246,6 @@ git push -u origin main
 
 - Real payments with a payment provider's test mode (e.g. Stripe or Omise)
 - Product reviews and ratings
+- Password reset by email, address book, discount codes
 - Deploy: frontend on Vercel or Netlify, API on Render, database on Neon or Supabase
 - Recommendations ("customers also bought") from order history

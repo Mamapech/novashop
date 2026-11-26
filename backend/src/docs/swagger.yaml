@@ -54,29 +54,69 @@ components:
         name: { type: string }
         slug: { type: string }
         productCount: { type: integer }
+    Variant:
+      type: object
+      properties:
+        id: { type: integer }
+        sku: { type: string, example: LAP-001-MIDNIGHT-512GB }
+        colorName: { type: string, example: Midnight }
+        colorHex: { type: string, example: "#2e3642" }
+        sizeLabel: { type: string, nullable: true, example: 512GB }
+        price: { type: number, example: 32900 }
+        stock: { type: integer }
+        imageUrl: { type: string, nullable: true }
     Product:
       type: object
       properties:
         id: { type: integer }
         sku: { type: string }
         name: { type: string }
+        tagline: { type: string }
         description: { type: string }
-        price: { type: number }
-        stock: { type: integer }
+        specs: { type: object, additionalProperties: { type: string }, example: { Display: "14-inch 2.8K", Battery: "Up to 18 hours" } }
+        sizeOptionName: { type: string, nullable: true, example: Storage }
+        price: { type: number, description: Lowest variant price ("From" price) }
+        stock: { type: integer, description: Total stock of all variants }
         imageUrl: { type: string, nullable: true }
         isFeatured: { type: boolean }
+        colors:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              hex: { type: string }
+              imageUrl: { type: string }
+        variants:
+          type: array
+          description: Included on GET /products/{id} and when filtering by ids
+          items: { $ref: '#/components/schemas/Variant' }
         brand: { $ref: '#/components/schemas/Brand' }
         category: { $ref: '#/components/schemas/Category' }
     ProductInput:
       type: object
-      required: [sku, name, price]
+      required: [sku, name, variants]
       properties:
         sku: { type: string, example: ACC-010 }
         name: { type: string, example: Lumen Desk Lamp }
+        tagline: { type: string, example: Light where you need it. }
         description: { type: string }
-        price: { type: number, example: 990 }
-        stock: { type: integer, example: 20 }
+        specs: { type: object, example: { Power: "8 W" } }
+        sizeOptionName: { type: string, nullable: true, example: Size }
         isFeatured: { type: boolean }
+        variants:
+          type: array
+          description: Existing variants keep their id; variants left out are deleted
+          items:
+            type: object
+            required: [price]
+            properties:
+              id: { type: integer }
+              colorName: { type: string, example: White }
+              colorHex: { type: string, example: "#ffffff" }
+              sizeLabel: { type: string, example: S }
+              price: { type: number, example: 990 }
+              stock: { type: integer, example: 20 }
         brandId: { type: integer, example: 3 }
         categoryId: { type: integer, example: 3 }
     OrderInput:
@@ -88,8 +128,8 @@ components:
           items:
             type: object
             properties:
-              productId: { type: integer, example: 4 }
-              quantity: { type: integer, example: 2 }
+              variantId: { type: integer, example: 30 }
+              quantity: { type: integer, example: 1 }
         shippingName: { type: string, example: Somchai Jaidee }
         shippingPhone: { type: string, example: "0812345678" }
         shippingAddress: { type: string, example: "199 Sukhumvit Rd, Si Racha, Chonburi 20230" }
@@ -115,7 +155,9 @@ components:
             type: object
             properties:
               productId: { type: integer }
+              variantId: { type: integer }
               name: { type: string }
+              variantLabel: { type: string, example: "Midnight, 512GB" }
               unitPrice: { type: number }
               quantity: { type: integer }
 
@@ -222,7 +264,8 @@ paths:
         - { name: maxPrice, in: query, schema: { type: number } }
         - { name: inStock, in: query, schema: { type: boolean } }
         - { name: featured, in: query, schema: { type: boolean } }
-        - { name: sort, in: query, schema: { type: string, enum: [newest, price_asc, price_desc, name] } }
+        - { name: ids, in: query, schema: { type: string }, description: Comma-separated product ids (used by the compare page) }
+        - { name: sort, in: query, schema: { type: string, enum: [featured, newest, price_asc, price_desc, name] } }
         - { name: page, in: query, schema: { type: integer, default: 1 } }
         - { name: limit, in: query, schema: { type: integer, default: 12, maximum: 50 } }
       responses:
@@ -284,12 +327,12 @@ paths:
     parameters: [{ $ref: '#/components/parameters/Id' }]
     post:
       tags: [Admin]
-      summary: Upload a product image (JPG, PNG or WEBP, max 2 MB)
+      summary: Upload a product image (JPG, PNG or WEBP, max 2 MB), optionally for one color
       security: [{ bearerAuth: [] }]
       requestBody:
         content:
           multipart/form-data:
-            schema: { type: object, properties: { image: { type: string, format: binary } } }
+            schema: { type: object, properties: { image: { type: string, format: binary }, color: { type: string, example: Midnight } } }
       responses:
         '200': { description: Uploaded, content: { application/json: { schema: { $ref: '#/components/schemas/Product' } } } }
 
